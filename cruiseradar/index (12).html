@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>CruiseRadar — Live Cruise Ship Tracker</title>
+<meta name="description" content="Track cruise ships live around the world. Real-time AIS positions for Royal Caribbean, Carnival, MSC, Norwegian and more.">
+<meta name="theme-color" content="#0d1117">
+<meta property="og:title" content="CruiseRadar — Live Cruise Ship Tracker">
+<meta property="og:description" content="Track cruise ships live. Real-time AIS positions for all major cruise lines.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://cruiseradar.info">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="canonical" href="https://cruiseradar.info">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --surface2:#1c2430; --border:#30363d;
+    --accent:#00d4ff; --accent2:#00ff9d; --text:#e6edf3; --text2:#8b949e; --text3:#484f58;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body { background:var(--bg); color:var(--text); font-family:'Syne',sans-serif; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+
+  /* TOPBAR */
+  .topbar { display:flex; align-items:center; padding:0 14px; height:52px; background:var(--surface); border-bottom:1px solid var(--border); gap:12px; z-index:1000; flex-shrink:0; }
+  .logo-text { font-family:'Syne',sans-serif; font-size:20px; font-weight:800; letter-spacing:-0.8px; color:var(--text); line-height:1; white-space:nowrap; }
+  .logo-text span { color:var(--accent); }
+  .logo-beta { font-family:'Syne',sans-serif; font-size:9px; font-weight:700; color:var(--accent); letter-spacing:2px; text-transform:uppercase; opacity:0.75; border:1px solid rgba(0,212,255,0.35); border-radius:3px; padding:1px 5px; line-height:1.4; }
+  .logo-version { font-family:'JetBrains Mono',monospace; font-size:8px; color:var(--text3); letter-spacing:0.4px; margin-top:2px; }
+  .search-bar { flex:1; max-width:300px; position:relative; }
+  .search-bar input { width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:6px 10px 6px 30px; color:var(--text); font-family:'JetBrains Mono',monospace; font-size:12px; outline:none; transition:border-color 0.2s; }
+  .search-bar input:focus { border-color:var(--accent); }
+  .search-bar input::placeholder { color:var(--text3); }
+  .search-icon { position:absolute; left:9px; top:50%; transform:translateY(-50%); color:var(--text3); font-size:13px; }
+  .live-badge { display:flex; align-items:center; gap:5px; background:rgba(0,255,157,0.1); border:1px solid rgba(0,255,157,0.3); border-radius:4px; padding:3px 8px; font-size:10px; font-weight:700; color:var(--accent2); letter-spacing:1px; white-space:nowrap; }
+  .live-dot { width:6px; height:6px; background:var(--accent2); border-radius:50%; animation:blink 1.5s infinite; flex-shrink:0; }
+  @keyframes blink { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.8)} }
+
+  /* MOBILE MENU BUTTON */
+  .mobile-menu-btn { display:none; background:var(--surface2); border:1px solid var(--border); border-radius:4px; color:var(--text2); font-size:16px; width:32px; height:32px; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; }
+
+  .main { display:flex; flex:1; overflow:hidden; position:relative; }
+
+  /* SIDEBAR */
+  .sidebar { width:268px; background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; overflow:hidden; z-index:500; transition:transform 0.3s ease; }
+  .sidebar-header { padding:10px 14px; border-bottom:1px solid var(--border); font-size:8.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--text3); display:flex; justify-content:space-between; align-items:center; }
+  .ais-warning { padding:8px 14px; background:rgba(0,212,255,0.05); border-bottom:1px solid var(--border); font-family:'JetBrains Mono',monospace; font-size:9.5px; color:var(--text3); line-height:1.5; }
+  .ais-warning span { color:var(--accent); }
+
+  /* SORT TOGGLE */
+  .sort-bar { display:flex; align-items:center; gap:6px; padding:7px 14px; border-bottom:1px solid var(--border); }
+  .sort-label { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--text3); margin-right:2px; }
+  .sort-btn { padding:3px 8px; border-radius:3px; font-size:9px; font-weight:600; border:1px solid var(--border); background:transparent; color:var(--text3); cursor:pointer; font-family:'Syne',sans-serif; transition:all 0.15s; }
+  .sort-btn.active { background:rgba(0,212,255,0.12); border-color:rgba(0,212,255,0.4); color:var(--accent); }
+
+  .filter-toggle { display:flex; align-items:center; justify-content:space-between; padding:9px 14px; border-bottom:1px solid var(--border); cursor:pointer; user-select:none; transition:background 0.15s; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--text2); }
+  .filter-toggle:hover { background:var(--surface2); }
+  .filter-arrow { font-size:9px; transition:transform 0.2s; color:var(--text3); }
+  .filter-arrow.open { transform:rotate(180deg); }
+  .filter-row { display:flex; gap:5px; flex-wrap:wrap; overflow:hidden; max-height:0; padding:0 14px; transition:max-height 0.3s ease, padding 0.3s ease; }
+  .filter-row.open { max-height:200px; padding:8px 14px; border-bottom:1px solid var(--border); }
+  .filter-btn { padding:3px 9px; border-radius:4px; font-size:9.5px; font-weight:600; letter-spacing:0.3px; border:1px solid var(--border); background:transparent; color:var(--text2); cursor:pointer; transition:all 0.15s; font-family:'Syne',sans-serif; white-space:nowrap; }
+  .filter-btn:hover,.filter-btn.active { background:var(--accent); border-color:var(--accent); color:#000; }
+
+  /* SHIP LIST — split into sections */
+  .ship-list { flex:1; overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+  .ship-list::-webkit-scrollbar { width:3px; }
+  .ship-list::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+  .section-header { padding:6px 14px; background:var(--surface2); border-bottom:1px solid var(--border); font-size:8.5px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--text3); display:flex; align-items:center; gap:6px; }
+  .section-dot { width:5px; height:5px; border-radius:50%; }
+  .ship-item { padding:9px 14px; border-bottom:1px solid rgba(48,54,61,0.5); cursor:pointer; transition:background 0.15s; display:flex; align-items:center; gap:9px; }
+  .ship-item:hover { background:var(--surface2); }
+  .ship-item.selected { background:rgba(0,212,255,0.08); border-left:2px solid var(--accent); }
+  .ship-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+  .ship-item-info { flex:1; min-width:0; }
+  .ship-item-name { font-size:11.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ship-item-sub { font-size:9.5px; color:var(--text2); font-family:'JetBrains Mono',monospace; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ship-item-speed { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text2); flex-shrink:0; }
+
+  #map { width:100%; height:100%; z-index:1; }
+  .map-wrap { position:relative; flex:1; display:flex; flex-direction:column; overflow:hidden; }
+
+  /* Leaflet overrides */
+  .leaflet-container { background:#0a1628 !important; font-family:'Syne',sans-serif; }
+  .leaflet-control-zoom { margin-bottom:44px !important; }
+  .leaflet-control-zoom a { background:var(--surface) !important; color:var(--text) !important; border-color:var(--border) !important; }
+  .leaflet-control-zoom a:hover { background:var(--surface2) !important; color:var(--accent) !important; }
+  .leaflet-control-attribution { background:rgba(13,17,23,0.8) !important; color:var(--text3) !important; font-size:9px !important; }
+  .leaflet-control-attribution a { color:var(--text3) !important; }
+  .leaflet-popup-content-wrapper { background:var(--surface) !important; border:1px solid var(--border) !important; border-radius:6px !important; box-shadow:0 4px 24px rgba(0,0,0,0.7) !important; padding:0 !important; color:var(--text); }
+  .leaflet-popup-content { margin:0 !important; }
+  .leaflet-popup-tip-container { display:none; }
+  .leaflet-tooltip { background:var(--surface) !important; border:1px solid var(--border) !important; color:var(--text2) !important; font-size:10px; font-family:'JetBrains Mono',monospace; box-shadow:none; }
+  .ship-label { background:transparent !important; border:none !important; box-shadow:none !important; }
+  .ship-label-text { font-family:'Syne',sans-serif; font-size:10px; font-weight:700; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.9),0 0 6px rgba(0,0,0,0.7); white-space:nowrap; pointer-events:none; }
+  .ship-popup { padding:11px 13px; min-width:165px; }
+  .ship-popup-name { font-size:12px; font-weight:700; color:var(--text); margin-bottom:3px; }
+  .ship-popup-detail { font-size:10px; color:var(--text2); font-family:'JetBrains Mono',monospace; margin-top:2px; }
+  .ship-popup-status { display:inline-block; margin-top:6px; font-size:9px; font-weight:700; padding:2px 7px; border-radius:3px; letter-spacing:0.5px; }
+  .status-underway { background:rgba(0,255,157,0.15); color:#00ff9d; border:1px solid rgba(0,255,157,0.3); }
+  .status-docked   { background:rgba(139,148,158,0.15); color:#8b949e; border:1px solid #30363d; }
+  .status-anchored { background:rgba(255,165,0,0.15); color:orange; border:1px solid rgba(255,165,0,0.3); }
+
+  /* DETAIL PANEL */
+  .detail-panel { position:absolute; top:0; right:0; width:320px; height:100%; background:var(--surface); border-left:1px solid var(--border); z-index:600; transform:translateX(100%); transition:transform 0.3s cubic-bezier(0.4,0,0.2,1); display:flex; flex-direction:column; overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+  .detail-panel.open { transform:translateX(0); }
+  .detail-panel::-webkit-scrollbar { width:3px; }
+  .detail-panel::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+  .detail-close { position:absolute; top:10px; right:10px; width:26px; height:26px; background:var(--surface2); border:1px solid var(--border); border-radius:4px; cursor:pointer; color:var(--text2); font-size:13px; display:flex; align-items:center; justify-content:center; transition:all 0.15s; z-index:1; }
+  .detail-close:hover { border-color:var(--accent); color:var(--accent); }
+  .detail-photo { width:100%; height:170px; object-fit:cover; display:block; background:var(--surface2); }
+  .detail-photo-placeholder { width:100%; height:170px; background:linear-gradient(135deg,var(--surface2),var(--bg)); display:flex; align-items:center; justify-content:center; font-size:44px; color:var(--text3); }
+  .photo-credit { font-size:8px; color:var(--text3); font-family:'JetBrains Mono',monospace; padding:3px 10px; background:rgba(0,0,0,0.4); text-align:right; }
+  .photo-loading { width:100%; height:170px; background:var(--surface2); display:flex; align-items:center; justify-content:center; }
+  .photo-spinner { width:22px; height:22px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .detail-hero { padding:14px 18px 12px; background:linear-gradient(135deg,var(--surface2) 0%,var(--bg) 100%); border-bottom:1px solid var(--border); }
+  .detail-name { font-size:17px; font-weight:800; letter-spacing:-0.5px; line-height:1.1; padding-right:34px; }
+  .detail-line { font-size:10.5px; color:var(--text2); margin-top:4px; font-family:'JetBrains Mono',monospace; }
+  .detail-badge { display:inline-flex; align-items:center; gap:4px; margin-top:7px; padding:2px 7px; border-radius:4px; font-size:9.5px; font-weight:700; letter-spacing:0.5px; }
+  .badge-underway { background:rgba(0,255,157,0.15); color:var(--accent2); border:1px solid rgba(0,255,157,0.3); }
+  .badge-anchored  { background:rgba(255,165,0,0.15); color:orange; border:1px solid rgba(255,165,0,0.3); }
+  .badge-docked    { background:rgba(139,148,158,0.15); color:var(--text2); border:1px solid var(--border); }
+  .last-seen { font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--text3); margin-top:5px; }
+  .detail-section { padding:12px 18px; border-bottom:1px solid var(--border); }
+  .detail-section-title { font-size:8.5px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--text3); margin-bottom:9px; }
+  .detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+  .detail-field-label { font-size:8.5px; text-transform:uppercase; letter-spacing:0.8px; color:var(--text3); margin-bottom:2px; }
+  .detail-field-value { font-size:11.5px; font-weight:600; font-family:'JetBrains Mono',monospace; color:var(--text); }
+  .detail-field-value.accent { color:var(--accent); }
+  .wiki-link { display:block; margin:12px 18px; padding:8px 14px; background:rgba(0,212,255,0.07); border:1px solid rgba(0,212,255,0.2); border-radius:5px; color:var(--accent); font-size:10.5px; font-weight:700; text-align:center; text-decoration:none; font-family:'Syne',sans-serif; letter-spacing:0.3px; transition:all 0.15s; }
+  .wiki-link:hover { background:rgba(0,212,255,0.14); border-color:rgba(0,212,255,0.4); }
+
+  /* LEGEND */
+  .map-legend-btn { position:absolute; bottom:36px; left:10px; background:rgba(22,27,34,0.92); border:1px solid var(--border); border-radius:5px; padding:6px 12px; z-index:500; backdrop-filter:blur(8px); cursor:pointer; font-size:10px; font-weight:700; color:var(--text2); font-family:'Syne',sans-serif; letter-spacing:0.5px; transition:all 0.15s; display:flex; align-items:center; gap:5px; }
+  .map-legend-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .map-legend { position:absolute; bottom:76px; left:10px; background:rgba(22,27,34,0.95); border:1px solid var(--border); border-radius:6px; padding:10px 14px; z-index:500; backdrop-filter:blur(8px); display:none; max-height:calc(100vh - 160px); overflow-y:auto; }
+  .map-legend.open { display:block; }
+  .legend-title { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--text3); margin-bottom:8px; }
+  .legend-item { display:flex; align-items:center; gap:7px; margin-bottom:4px; }
+  .legend-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .legend-label { font-size:10px; color:var(--text2); font-family:'JetBrains Mono',monospace; }
+  .legend-divider { border-top:1px solid var(--border); margin:6px 0; }
+  .legend-shape-row { display:flex; gap:14px; }
+  .legend-shape { font-size:10px; color:var(--text2); font-family:'JetBrains Mono',monospace; }
+
+  .map-version { position:absolute; bottom:10px; right:10px; font-size:9px; color:var(--text3); font-family:'JetBrains Mono',monospace; background:rgba(13,17,23,0.75); padding:2px 7px; border-radius:3px; z-index:500; pointer-events:none; }
+
+  /* port label styles removed in 0.1.1 */
+
+  /* MOBILE OVERLAY for sidebar */
+  .sidebar-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:490; }
+
+  /* ============================================================
+     MOBILE STYLES
+  ============================================================ */
+  @media (max-width: 768px) {
+    .topbar { height:48px; padding:0 10px; gap:8px; }
+    .logo-text { font-size:17px; }
+    .logo-version { display:none; }
+    .search-bar { display:none; }
+    .mobile-menu-btn { display:flex; }
+
+    .main { position:relative; }
+
+    .sidebar {
+      position:fixed;
+      top:48px;
+      left:0;
+      bottom:0;
+      width:280px;
+      z-index:800;
+      transform:translateX(-100%);
+      border-right:1px solid var(--border);
+      box-shadow:4px 0 24px rgba(0,0,0,0.6);
+      /* Account for iPhone safe area at bottom */
+      padding-bottom:env(safe-area-inset-bottom);
+    }
+    .sidebar.mobile-open {
+      transform:translateX(0);
+    }
+    .sidebar-overlay.active { display:block; }
+
+    .map-wrap { width:100%; }
+
+    /* Detail panel full width on mobile */
+    .detail-panel {
+      width:100%;
+      border-left:none;
+      /* Account for iPhone notch/safe areas */
+      padding-bottom:env(safe-area-inset-bottom);
+    }
+
+    /* Legend moves to right on mobile */
+    .map-legend-btn { left:auto; right:10px; bottom:calc(36px + env(safe-area-inset-bottom)); }
+    .map-legend { left:auto; right:10px; bottom:calc(76px + env(safe-area-inset-bottom)); max-width:220px; }
+
+    .map-version { display:none; }
+
+    /* Larger touch targets */
+    .ship-item { padding:11px 14px; min-height:48px; }
+    .filter-btn { padding:6px 12px; font-size:10px; min-height:36px; }
+    .detail-close { width:36px; height:36px; font-size:16px; }
+    .sort-btn { min-height:32px; padding:4px 10px; }
+  }
+
+  /* iPhone 15 Pro specifically (393x852 logical pixels) and similar */
+  @media (max-width: 430px) {
+    .topbar { height:44px; padding:0 8px; }
+    .sidebar { top:44px; width:100%; }
+    .detail-panel { width:100%; }
+    .detail-name { font-size:15px; }
+    .detail-photo { height:160px; }
+    .detail-photo-placeholder { height:160px; }
+    .detail-hero { padding:12px 16px 10px; }
+    .detail-section { padding:10px 16px; }
+    .wiki-link { margin:10px 16px; }
+    /* Ensure map fills remaining space properly */
+    .map-wrap { height:calc(100vh - 44px); }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <div style="display:inline-flex;align-items:center;gap:6px;">
+      <div class="logo-text">Cruise<span>Radar</span></div>
+      <div class="logo-beta" style="position:relative;top:-1px;">beta</div>
+    </div>
+    <div class="logo-version">Version 0.1.3.1 (Beta)</div>
+  </div>
+  <div class="search-bar">
+    <span class="search-icon">⌕</span>
+    <input type="text" placeholder="Search ships, ports, cruise lines..." id="searchInput" oninput="filterSearch(this.value)">
+  </div>
+  <button class="mobile-menu-btn" onclick="toggleMobileSidebar()" aria-label="Menu">☰</button>
+  <div style="margin-left:auto;">
+    <div class="live-badge" id="liveBadge"><div class="live-dot"></div>LIVE</div>
+  </div>
+</div>
+
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleMobileSidebar()"></div>
+
+<div class="main">
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <span>Broadcasted cruise ships since opened</span>
+      <span id="shipCount" style="color:var(--accent);font-family:'JetBrains Mono',monospace;">0</span>
+    </div>
+    <div class="ais-warning">
+      <span>ℹ</span> Ships broadcast position every <span>5–10 min</span>. It may take a few minutes for all ships to appear.
+    </div>
+    <div class="sort-bar">
+      <span class="sort-label">Sort</span>
+      <button class="sort-btn active" onclick="setSort(this,'name')">Name</button>
+      <button class="sort-btn" onclick="setSort(this,'speed')">Speed</button>
+      <button class="sort-btn" onclick="setSort(this,'line')">Line</button>
+    </div>
+    <div class="filter-toggle" onclick="toggleFilters()">
+      <span>Filter by Cruise Line</span>
+      <span class="filter-arrow" id="filterArrow">▼</span>
+    </div>
+    <div class="filter-row" id="filterRow">
+      <button class="filter-btn active" onclick="setFilter(this,'all')">All</button>
+      <button class="filter-btn" id="fbtn-royal"     onclick="setFilter(this,'royal')">Royal Caribbean</button>
+      <button class="filter-btn" id="fbtn-carnival"  onclick="setFilter(this,'carnival')">Carnival</button>
+      <button class="filter-btn" id="fbtn-msc"       onclick="setFilter(this,'msc')">MSC</button>
+      <button class="filter-btn" id="fbtn-ncl"       onclick="setFilter(this,'ncl')">Norwegian</button>
+      <button class="filter-btn" id="fbtn-celebrity" onclick="setFilter(this,'celebrity')">Celebrity</button>
+      <button class="filter-btn" id="fbtn-princess"  onclick="setFilter(this,'princess')">Princess</button>
+      <button class="filter-btn" id="fbtn-disney"    onclick="setFilter(this,'disney')">Disney</button>
+      <button class="filter-btn" id="fbtn-virgin"    onclick="setFilter(this,'virgin')">Virgin Voyages</button>
+      <button class="filter-btn" id="fbtn-cunard"    onclick="setFilter(this,'cunard')">Cunard</button>
+      <button class="filter-btn" id="fbtn-hal"       onclick="setFilter(this,'hal')">Holland America</button>
+      <button class="filter-btn" id="fbtn-viking"    onclick="setFilter(this,'viking')">Viking</button>
+      <button class="filter-btn" id="fbtn-costa"     onclick="setFilter(this,'costa')">Costa</button>
+      <button class="filter-btn" id="fbtn-aida"      onclick="setFilter(this,'aida')">AIDA</button>
+      <button class="filter-btn" id="fbtn-oceania"   onclick="setFilter(this,'oceania')">Oceania</button>
+      <button class="filter-btn" id="fbtn-regent"    onclick="setFilter(this,'regent')">Regent</button>
+      <button class="filter-btn" id="fbtn-silversea" onclick="setFilter(this,'silversea')">Silversea</button>
+      <button class="filter-btn" id="fbtn-other"     onclick="setFilter(this,'other')">Other</button>
+    </div>
+    <div class="ship-list" id="shipList"></div>
+  </div>
+
+  <div class="map-wrap">
+    <div id="map"></div>
+
+    <!-- LEGEND BUTTON + PANEL -->
+    <button class="map-legend-btn" onclick="toggleLegend()">
+      <span>⬤</span> Legend
+    </button>
+    <div class="map-legend" id="mapLegend">
+      <div class="legend-title">Cruise Lines</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#7c6af5"></div><div class="legend-label">Royal Caribbean</div></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ff6b35"></div><div class="legend-label">Carnival</div></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#00d4ff"></div><div class="legend-label">MSC Cruises</div></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#00ff9d"></div><div class="legend-label">Norwegian</div></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ffd700"></div><div class="legend-label">Celebrity</div></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#4fc3f7"></div><div class="legend-label">Princess</div></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#29b6f6"></div><div class="legend-label">Disney</div></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ff1744"></div><div class="legend-label">Virgin Voyages</div></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ef5350"></div><div class="legend-label">Cunard</div></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ff8a65"></div><div class="legend-label">Holland America</div></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#26a69a"></div><div class="legend-label">Viking</div></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ab47bc"></div><div class="legend-label">Costa</div></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ec407a"></div><div class="legend-label">AIDA</div></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#66bb6a"></div><div class="legend-label">Oceania</div></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#9c8f6e"></div><div class="legend-label">Regent / Silversea</div></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#8b949e"></div><div class="legend-label">Other</div></div>
+      <div class="legend-divider"></div>
+      <div class="legend-shape-row">
+        <div class="legend-shape">▲ Underway</div>
+        <div class="legend-shape">● Docked</div>
+      </div>
+    </div>
+
+    <div class="map-version">CruiseRadar 0.1.1 · OpenStreetMap</div>
+
+    <!-- DETAIL PANEL -->
+    <div class="detail-panel" id="detailPanel">
+      <button class="detail-close" onclick="closeDetail()">✕</button>
+      <div id="photoArea"><div class="detail-photo-placeholder">🚢</div></div>
+      <div id="photoCredit" class="photo-credit" style="display:none"></div>
+      <div class="detail-hero">
+        <div class="detail-name" id="dpName">—</div>
+        <div class="detail-line" id="dpLine">—</div>
+        <div id="dpBadge" class="detail-badge badge-underway">● UNDERWAY</div>
+        <div class="last-seen" id="dpLastSeen"></div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">Navigation</div>
+        <div class="detail-grid">
+          <div><div class="detail-field-label">Speed</div><div class="detail-field-value accent" id="dpSpeed">—</div></div>
+          <div><div class="detail-field-label">Heading</div><div class="detail-field-value" id="dpHeading">—</div></div>
+          <div><div class="detail-field-label">Latitude</div><div class="detail-field-value" id="dpLat">—</div></div>
+          <div><div class="detail-field-label">Longitude</div><div class="detail-field-value" id="dpLon">—</div></div>
+        </div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">Vessel Info</div>
+        <div class="detail-grid">
+          <div><div class="detail-field-label">IMO</div><div class="detail-field-value" id="dpImo">—</div></div>
+          <div><div class="detail-field-label">Flag</div><div class="detail-field-value" id="dpFlag">—</div></div>
+          <div id="rowBuilt"><div class="detail-field-label">Built</div><div class="detail-field-value" id="dpBuilt">—</div></div>
+          <div id="rowCapacity"><div class="detail-field-label">Passengers</div><div class="detail-field-value" id="dpCapacity">—</div></div>
+          <div id="rowLength"><div class="detail-field-label">Length</div><div class="detail-field-value" id="dpLength">—</div></div>
+          <div id="rowGT"><div class="detail-field-label">Gross Tons</div><div class="detail-field-value" id="dpGT">—</div></div>
+        </div>
+      </div>
+      <a id="dpWikiLink" class="wiki-link" href="#" target="_blank" rel="noopener" style="display:none">
+        📖 View on Wikipedia
+      </a>
+    </div>
+  </div>
+</div>
+
+<script>
+
+// =====================
+// MAP INIT
+// =====================
+const map = L.map('map', {
+  center: [20, -40],
+  zoom: 3,
+  zoomControl: true,
+  attributionControl: true,
+  preferCanvas: true
+});
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+  subdomains: 'abcd',
+  maxZoom: 19
+}).addTo(map);
+
+// =====================
+// SHIP ICON FACTORY
+// =====================
+function makeIcon(color, underway, heading) {
+  const size = 14;
+  let svg;
+  if (underway) {
+    const angle = (heading || 0) - 90;
+    svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 14 14">
+      <g transform="rotate(${angle},7,7)">
+        <polygon points="7,1 13,13 7,10 1,13" fill="${color}" stroke="#000" stroke-width="1.2" stroke-linejoin="round"/>
+      </g>
+    </svg>`;
+  } else {
+    svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 14 14">
+      <circle cx="7" cy="7" r="5.5" fill="${color}" stroke="#000" stroke-width="1.5"/>
+    </svg>`;
+  }
+  return L.divIcon({
+    html: svg,
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [size/2, size/2]
+  });
+}
+
+
+// =====================
+// SHIP DATABASE (see below — injected by build script)
+// =====================
+const SHIP_DB = {
+  // ============================================================
+  // ROYAL CARIBBEAN — flag: Bahamas
+  // ============================================================
+  "Wonder of the Seas":        { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2022, capacity:6988, gt:236857, length:362, flag:"🇧🇸 Bahamas",     wiki:"Wonder of the Seas" },
+  "Symphony of the Seas":      { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2018, capacity:6680, gt:228081, length:362, flag:"🇧🇸 Bahamas",     wiki:"Symphony of the Seas" },
+  "Harmony of the Seas":       { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2016, capacity:6687, gt:227700, length:362, flag:"🇧🇸 Bahamas",     wiki:"Harmony of the Seas" },
+  "Allure of the Seas":        { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2010, capacity:6296, gt:225282, length:362, flag:"🇧🇸 Bahamas",     wiki:"Allure of the Seas" },
+  "Oasis of the Seas":         { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2009, capacity:6296, gt:225282, length:362, flag:"🇧🇸 Bahamas",     wiki:"Oasis of the Seas" },
+  "Icon of the Seas":          { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2024, capacity:7600, gt:250800, length:365, flag:"🇧🇸 Bahamas",     wiki:"Icon of the Seas" },
+  "Utopia of the Seas":        { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2024, capacity:7600, gt:236857, length:365, flag:"🇧🇸 Bahamas",     wiki:"Utopia of the Seas" },
+  "Odyssey of the Seas":       { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2021, capacity:4180, gt:169379, length:347, flag:"🇧🇸 Bahamas",     wiki:"Odyssey of the Seas" },
+  "Anthem of the Seas":        { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2015, capacity:4905, gt:168666, length:348, flag:"🇧🇸 Bahamas",     wiki:"Anthem of the Seas" },
+  "Quantum of the Seas":       { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2014, capacity:4905, gt:168666, length:348, flag:"🇧🇸 Bahamas",     wiki:"Quantum of the Seas" },
+  "Ovation of the Seas":       { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2016, capacity:4905, gt:168666, length:348, flag:"🇧🇸 Bahamas",     wiki:"Ovation of the Seas" },
+  "Spectrum of the Seas":      { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2019, capacity:4246, gt:169379, length:347, flag:"🇧🇸 Bahamas",     wiki:"Spectrum of the Seas" },
+  "Navigator of the Seas":     { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2002, capacity:3807, gt:138279, length:311, flag:"🇧🇸 Bahamas",     wiki:"Navigator of the Seas" },
+  "Navigator of the Sea":      { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2002, capacity:3807, gt:138279, length:311, flag:"🇧🇸 Bahamas",     wiki:"Navigator of the Seas" },
+  "Explorer of the Seas":      { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2000, capacity:3807, gt:137308, length:311, flag:"🇧🇸 Bahamas",     wiki:"Explorer of the Seas" },
+  "Mariner of the Seas":       { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2003, capacity:3807, gt:138279, length:311, flag:"🇧🇸 Bahamas",     wiki:"Mariner of the Seas" },
+  "Adventure of the Seas":     { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2001, capacity:3807, gt:137276, length:311, flag:"🇧🇸 Bahamas",     wiki:"Adventure of the Seas" },
+  "Adventure of the Sea":      { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2001, capacity:3807, gt:137276, length:311, flag:"🇧🇸 Bahamas",     wiki:"Adventure of the Seas" },
+  "Voyager of the Seas":       { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:1999, capacity:3840, gt:137276, length:311, flag:"🇧🇸 Bahamas",     wiki:"Voyager of the Seas" },
+  "Freedom of the Seas":       { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2006, capacity:4375, gt:154407, length:339, flag:"🇧🇸 Bahamas",     wiki:"Freedom of the Seas" },
+  "Liberty of the Seas":       { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2007, capacity:4375, gt:154407, length:339, flag:"🇧🇸 Bahamas",     wiki:"Liberty of the Seas" },
+  "Independence of the Seas":  { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2008, capacity:4375, gt:154407, length:339, flag:"🇧🇸 Bahamas",     wiki:"Independence of the Seas" },
+  "Independence of the":       { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2008, capacity:4375, gt:154407, length:339, flag:"🇧🇸 Bahamas",     wiki:"Independence of the Seas" },
+  "Brilliance of the Seas":    { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2002, capacity:2501, gt:90090,  length:293, flag:"🇧🇸 Bahamas",     wiki:"Brilliance of the Seas" },
+  "Brilliance of the Se":      { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2002, capacity:2501, gt:90090,  length:293, flag:"🇧🇸 Bahamas",     wiki:"Brilliance of the Seas" },
+  "Serenade of the Seas":      { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2003, capacity:2501, gt:90090,  length:293, flag:"🇧🇸 Bahamas",     wiki:"Serenade of the Seas" },
+  "Jewel of the Seas":         { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2004, capacity:2501, gt:90090,  length:293, flag:"🇧🇸 Bahamas",     wiki:"Jewel of the Seas" },
+  "Enchantment of the Seas":   { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:1997, capacity:2730, gt:80700,  length:301, flag:"🇧🇸 Bahamas",     wiki:"Enchantment of the Seas" },
+  "Enchantment of the S":      { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:1997, capacity:2730, gt:80700,  length:301, flag:"🇧🇸 Bahamas",     wiki:"Enchantment of the Seas" },
+  "Grandeur of the Seas":      { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:1996, capacity:2446, gt:73817,  length:279, flag:"🇧🇸 Bahamas",     wiki:"Grandeur of the Seas" },
+  "Vision of the Seas":        { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:1998, capacity:2435, gt:78340,  length:279, flag:"🇧🇸 Bahamas",     wiki:"Vision of the Seas" },
+  "Radiance of the Seas":      { line:"Royal Caribbean",      cat:"royal",    color:"#7c6af5", built:2001, capacity:2501, gt:90090,  length:293, flag:"🇧🇸 Bahamas",     wiki:"Radiance of the Seas" },
+
+  // ============================================================
+  // CARNIVAL CRUISE LINE — flag: Panama
+  // ============================================================
+  "Carnival Celebration":      { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:2022, capacity:5374, gt:183521, length:344, flag:"🇵🇦 Panama",     wiki:"Carnival Celebration" },
+  "Carnival Jubilee":          { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:2023, capacity:5374, gt:183521, length:344, flag:"🇵🇦 Panama",     wiki:"Carnival Jubilee" },
+  "Mardi Gras":                { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:2021, capacity:6500, gt:180000, length:344, flag:"🇵🇦 Panama",     wiki:"Mardi Gras (ship)" },
+  "Carnival Vista":            { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:2016, capacity:3934, gt:133596, length:323, flag:"🇵🇦 Panama",     wiki:"Carnival Vista" },
+  "Carnival Horizon":          { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:2018, capacity:3954, gt:133596, length:323, flag:"🇵🇦 Panama",     wiki:"Carnival Horizon" },
+  "Carnival Panorama":         { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:2019, capacity:4008, gt:133866, length:323, flag:"🇵🇦 Panama",     wiki:"Carnival Panorama" },
+  "Carnival Breeze":           { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:2012, capacity:3690, gt:128251, length:306, flag:"🇵🇦 Panama",     wiki:"Carnival Breeze" },
+  "Carnival Magic":            { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:2011, capacity:3690, gt:128048, length:306, flag:"🇵🇦 Panama",     wiki:"Carnival Magic" },
+  "Carnival Dream":            { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:2009, capacity:3646, gt:128251, length:306, flag:"🇵🇦 Panama",     wiki:"Carnival Dream" },
+  "Carnival Sunshine":         { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:1996, capacity:3002, gt:101353, length:272, flag:"🇵🇦 Panama",     wiki:"Carnival Sunshine" },
+  "Carnival Splendor":         { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:2008, capacity:3006, gt:113323, length:290, flag:"🇵🇦 Panama",     wiki:"Carnival Splendor" },
+  "Carnival Freedom":          { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:2007, capacity:2980, gt:110239, length:290, flag:"🇵🇦 Panama",     wiki:"Carnival Freedom" },
+  "Carnival Liberty":          { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:2005, capacity:2974, gt:110239, length:290, flag:"🇵🇦 Panama",     wiki:"Carnival Liberty" },
+  "Carnival Glory":            { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:2003, capacity:2980, gt:110239, length:290, flag:"🇵🇦 Panama",     wiki:"Carnival Glory" },
+  "Carnival Valor":            { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:2004, capacity:2980, gt:110239, length:290, flag:"🇵🇦 Panama",     wiki:"Carnival Valor" },
+  "Carnival Conquest":         { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:2002, capacity:2980, gt:110239, length:290, flag:"🇵🇦 Panama",     wiki:"Carnival Conquest" },
+  "Carnival Elation":          { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:1998, capacity:2052, gt:70367,  length:260, flag:"🇵🇦 Panama",     wiki:"Carnival Elation" },
+  "Carnival Sensation":        { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:1993, capacity:2040, gt:70367,  length:260, flag:"🇵🇦 Panama",     wiki:"Carnival Sensation" },
+  "Carnival Paradise":         { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:1998, capacity:2052, gt:70367,  length:260, flag:"🇵🇦 Panama",     wiki:"Carnival Paradise" },
+  "Carnival Inspiration":      { line:"Carnival Cruise Line", cat:"carnival", color:"#ff6b35", built:1996, capacity:2052, gt:70367,  length:260, flag:"🇵🇦 Panama",     wiki:"Carnival Inspiration" },
+
+  // ============================================================
+  // MSC CRUISES — flag: Panama
+  // ============================================================
+  "MSC World Europa":          { line:"MSC Cruises",          cat:"msc",      color:"#00d4ff", built:2022, capacity:6762, gt:215863, length:333, flag:"🇵🇦 Panama",     wiki:"MSC World Europa" },
+  "MSC Seashore":              { line:"MSC Cruises",          cat:"msc",      color:"#00d4ff", built:2021, capacity:5632, gt:169400, length:339, flag:"🇵🇦 Panama",     wiki:"MSC Seashore" },
+  "MSC Seascape":              { line:"MSC Cruises",          cat:"msc",      color:"#00d4ff", built:2022, capacity:5877, gt:169400, length:339, flag:"🇵🇦 Panama",     wiki:"MSC Seascape" },
+  "MSC Grandiosa":             { line:"MSC Cruises",          cat:"msc",      color:"#00d4ff", built:2019, capacity:6334, gt:181541, length:331, flag:"🇵🇦 Panama",     wiki:"MSC Grandiosa" },
+  "MSC Virtuosa":              { line:"MSC Cruises",          cat:"msc",      color:"#00d4ff", built:2021, capacity:6334, gt:181541, length:331, flag:"🇵🇦 Panama",     wiki:"MSC Virtuosa" },
+  "MSC Bellissima":            { line:"MSC Cruises",          cat:"msc",      color:"#00d4ff", built:2019, capacity:5686, gt:167600, length:315, flag:"🇵🇦 Panama",     wiki:"MSC Bellissima" },
+  "MSC Meraviglia":            { line:"MSC Cruises",          cat:"msc",      color:"#00d4ff", built:2017, capacity:5686, gt:167600, length:315, flag:"🇵🇦 Panama",     wiki:"MSC Meraviglia" },
+  "MSC Magnifica":             { line:"MSC Cruises",          cat:"msc",      color:"#00d4ff", built:2010, capacity:3013, gt:95128,  length:293, flag:"🇵🇦 Panama",     wiki:"MSC Magnifica" },
+  "MSC Splendida":             { line:"MSC Cruises",          cat:"msc",      color:"#00d4ff", built:2009, capacity:3900, gt:137936, length:333, flag:"🇵🇦 Panama",     wiki:"MSC Splendida" },
+  "MSC Fantasia":              { line:"MSC Cruises",          cat:"msc",      color:"#00d4ff", built:2008, capacity:3900, gt:137936, length:333, flag:"🇵🇦 Panama",     wiki:"MSC Fantasia" },
+  "MSC Divina":                { line:"MSC Cruises",          cat:"msc",      color:"#00d4ff", built:2012, capacity:4345, gt:139400, length:333, flag:"🇵🇦 Panama",     wiki:"MSC Divina" },
+  "MSC Preziosa":              { line:"MSC Cruises",          cat:"msc",      color:"#00d4ff", built:2013, capacity:4345, gt:139400, length:333, flag:"🇵🇦 Panama",     wiki:"MSC Preziosa" },
+  "MSC Musica":                { line:"MSC Cruises",          cat:"msc",      color:"#00d4ff", built:2006, capacity:3013, gt:92409,  length:293, flag:"🇵🇦 Panama",     wiki:"MSC Musica" },
+  "MSC Orchestra":             { line:"MSC Cruises",          cat:"msc",      color:"#00d4ff", built:2007, capacity:3013, gt:92409,  length:293, flag:"🇵🇦 Panama",     wiki:"MSC Orchestra" },
+  "MSC Poesia":                { line:"MSC Cruises",          cat:"msc",      color:"#00d4ff", built:2008, capacity:3013, gt:92627,  length:293, flag:"🇵🇦 Panama",     wiki:"MSC Poesia" },
+  "MSC Armonia":               { line:"MSC Cruises",          cat:"msc",      color:"#00d4ff", built:2001, capacity:2679, gt:65542,  length:251, flag:"🇵🇦 Panama",     wiki:"MSC Armonia" },
+  "MSC Sinfonia":              { line:"MSC Cruises",          cat:"msc",      color:"#00d4ff", built:2002, capacity:2679, gt:65542,  length:251, flag:"🇵🇦 Panama",     wiki:"MSC Sinfonia" },
+  "MSC Opera":                 { line:"MSC Cruises",          cat:"msc",      color:"#00d4ff", built:2004, capacity:2679, gt:65542,  length:251, flag:"🇵🇦 Panama",     wiki:"MSC Opera" },
+  "MSC Lirica":                { line:"MSC Cruises",          cat:"msc",      color:"#00d4ff", built:2003, capacity:2679, gt:65542,  length:251, flag:"🇵🇦 Panama",     wiki:"MSC Lirica" },
+
+  // ============================================================
+  // PRINCESS CRUISES — flag: Bermuda
+  // ============================================================
+  "Sun Princess":              { line:"Princess Cruises",     cat:"princess", color:"#4fc3f7", built:2024, capacity:4300, gt:175500, length:341, flag:"🇧🇲 Bermuda",    wiki:"Sun Princess (2024 ship)" },
+  "Discovery Princess":        { line:"Princess Cruises",     cat:"princess", color:"#4fc3f7", built:2022, capacity:3660, gt:143700, length:330, flag:"🇧🇲 Bermuda",    wiki:"Discovery Princess" },
+  "Enchanted Princess":        { line:"Princess Cruises",     cat:"princess", color:"#4fc3f7", built:2020, capacity:3660, gt:143700, length:330, flag:"🇧🇲 Bermuda",    wiki:"Enchanted Princess" },
+  "Sky Princess":              { line:"Princess Cruises",     cat:"princess", color:"#4fc3f7", built:2019, capacity:3660, gt:143700, length:330, flag:"🇧🇲 Bermuda",    wiki:"Sky Princess" },
+  "Majestic Princess":         { line:"Princess Cruises",     cat:"princess", color:"#4fc3f7", built:2017, capacity:3560, gt:143700, length:330, flag:"🇧🇲 Bermuda",    wiki:"Majestic Princess" },
+  "Regal Princess":            { line:"Princess Cruises",     cat:"princess", color:"#4fc3f7", built:2014, capacity:3560, gt:141000, length:330, flag:"🇧🇲 Bermuda",    wiki:"Regal Princess" },
+  "Royal Princess":            { line:"Princess Cruises",     cat:"princess", color:"#4fc3f7", built:2013, capacity:3560, gt:141000, length:330, flag:"🇧🇲 Bermuda",    wiki:"Royal Princess" },
+  "Caribbean Princess":        { line:"Princess Cruises",     cat:"princess", color:"#4fc3f7", built:2004, capacity:3782, gt:112894, length:290, flag:"🇧🇲 Bermuda",    wiki:"Caribbean Princess" },
+  "Crown Princess":            { line:"Princess Cruises",     cat:"princess", color:"#4fc3f7", built:2006, capacity:3782, gt:113561, length:290, flag:"🇧🇲 Bermuda",    wiki:"Crown Princess" },
+  "Emerald Princess":          { line:"Princess Cruises",     cat:"princess", color:"#4fc3f7", built:2007, capacity:3782, gt:113561, length:290, flag:"🇧🇲 Bermuda",    wiki:"Emerald Princess" },
+  "Ruby Princess":             { line:"Princess Cruises",     cat:"princess", color:"#4fc3f7", built:2008, capacity:3782, gt:113561, length:290, flag:"🇧🇲 Bermuda",    wiki:"Ruby Princess" },
+  "Sapphire Princess":         { line:"Princess Cruises",     cat:"princess", color:"#4fc3f7", built:2004, capacity:2670, gt:115875, length:290, flag:"🇧🇲 Bermuda",    wiki:"Sapphire Princess" },
+  "Diamond Princess":          { line:"Princess Cruises",     cat:"princess", color:"#4fc3f7", built:2004, capacity:2670, gt:115875, length:290, flag:"🇧🇲 Bermuda",    wiki:"Diamond Princess" },
+  "Star Princess":             { line:"Princess Cruises",     cat:"princess", color:"#4fc3f7", built:2002, capacity:2600, gt:108977, length:290, flag:"🇧🇲 Bermuda",    wiki:"Star Princess (2001 ship)" },
+  "Golden Princess":           { line:"Princess Cruises",     cat:"princess", color:"#4fc3f7", built:2001, capacity:2600, gt:108865, length:290, flag:"🇧🇲 Bermuda",    wiki:"Golden Princess" },
+  "Grand Princess":            { line:"Princess Cruises",     cat:"princess", color:"#4fc3f7", built:1998, capacity:2600, gt:108806, length:290, flag:"🇧🇲 Bermuda",    wiki:"Grand Princess" },
+  "Coral Princess":            { line:"Princess Cruises",     cat:"princess", color:"#4fc3f7", built:2002, capacity:1974, gt:91627,  length:294, flag:"🇧🇲 Bermuda",    wiki:"Coral Princess" },
+  "Island Princess":           { line:"Princess Cruises",     cat:"princess", color:"#4fc3f7", built:2003, capacity:1974, gt:91627,  length:294, flag:"🇧🇲 Bermuda",    wiki:"Island Princess" },
+  "Pacific Princess":          { line:"Princess Cruises",     cat:"princess", color:"#4fc3f7", built:1999, capacity:688,  gt:30277,  length:181, flag:"🇧🇲 Bermuda",    wiki:"Pacific Princess" },
+
+  // ============================================================
+  // AIDA CRUISES — flag: varies (Germany/Italy)
+  // ============================================================
+  "AIDAnova":                  { line:"AIDA Cruises",         cat:"aida",     color:"#ec407a", built:2018, capacity:6600, gt:183900, length:337, flag:"🇮🇹 Italy",      wiki:"AIDAnova" },
+  "AIDAcosma":                 { line:"AIDA Cruises",         cat:"aida",     color:"#ec407a", built:2021, capacity:6600, gt:183900, length:337, flag:"🇮🇹 Italy",      wiki:"AIDAcosma" },
+  "AIDAprima":                 { line:"AIDA Cruises",         cat:"aida",     color:"#ec407a", built:2016, capacity:4000, gt:125572, length:300, flag:"🇮🇹 Italy",      wiki:"AIDAprima" },
+  "AIDAperla":                 { line:"AIDA Cruises",         cat:"aida",     color:"#ec407a", built:2017, capacity:3300, gt:125572, length:300, flag:"🇮🇹 Italy",      wiki:"AIDAperla" },
+  "AIDAstella":                { line:"AIDA Cruises",         cat:"aida",     color:"#ec407a", built:2013, capacity:2194, gt:71304,  length:253, flag:"🇮🇹 Italy",      wiki:"AIDAstella" },
+  "AIDAmar":                   { line:"AIDA Cruises",         cat:"aida",     color:"#ec407a", built:2012, capacity:2686, gt:71304,  length:253, flag:"🇮🇹 Italy",      wiki:"AIDAmar" },
+  "AIDAsol":                   { line:"AIDA Cruises",         cat:"aida",     color:"#ec407a", built:2011, capacity:2686, gt:71304,  length:253, flag:"🇩🇪 Germany",    wiki:"AIDAsol" },
+  "AIDAblu":                   { line:"AIDA Cruises",         cat:"aida",     color:"#ec407a", built:2010, capacity:2686, gt:71304,  length:253, flag:"🇩🇪 Germany",    wiki:"AIDAblu" },
+  "AIDAluna":                  { line:"AIDA Cruises",         cat:"aida",     color:"#ec407a", built:2009, capacity:2686, gt:69203,  length:252, flag:"🇩🇪 Germany",    wiki:"AIDAluna" },
+  "AIDAbella":                 { line:"AIDA Cruises",         cat:"aida",     color:"#ec407a", built:2008, capacity:2686, gt:69203,  length:252, flag:"🇩🇪 Germany",    wiki:"AIDAbella" },
+  "AIDAdiva":                  { line:"AIDA Cruises",         cat:"aida",     color:"#ec407a", built:2007, capacity:2050, gt:69203,  length:252, flag:"🇩🇪 Germany",    wiki:"AIDAdiva" },
+  "AIDAvita":                  { line:"AIDA Cruises",         cat:"aida",     color:"#ec407a", built:2002, capacity:1266, gt:42289,  length:203, flag:"🇩🇪 Germany",    wiki:"AIDAvita" },
+  "AIDAaura":                  { line:"AIDA Cruises",         cat:"aida",     color:"#ec407a", built:2003, capacity:1266, gt:42289,  length:203, flag:"🇩🇪 Germany",    wiki:"AIDAaura" },
+  "AIDACara":                  { line:"AIDA Cruises",         cat:"aida",     color:"#ec407a", built:1996, capacity:1186, gt:38557,  length:193, flag:"🇩🇪 Germany",    wiki:"AIDACara" },
+
+  // ============================================================
+  // NORWEGIAN CRUISE LINE — flag: Bahamas
+  // ============================================================
+  "Norwegian Aqua":            { line:"Norwegian Cruise Line",cat:"ncl",      color:"#00ff9d", built:2025, capacity:3571, gt:156300, length:322, flag:"🇧🇸 Bahamas",    wiki:"Norwegian Aqua" },
+  "Norwegian Prima":           { line:"Norwegian Cruise Line",cat:"ncl",      color:"#00ff9d", built:2022, capacity:3215, gt:142500, length:294, flag:"🇧🇸 Bahamas",    wiki:"Norwegian Prima" },
+  "Norwegian Viva":            { line:"Norwegian Cruise Line",cat:"ncl",      color:"#00ff9d", built:2023, capacity:3215, gt:142500, length:294, flag:"🇧🇸 Bahamas",    wiki:"Norwegian Viva" },
+  "Norwegian Encore":          { line:"Norwegian Cruise Line",cat:"ncl",      color:"#00ff9d", built:2019, capacity:3998, gt:169116, length:333, flag:"🇧🇸 Bahamas",    wiki:"Norwegian Encore" },
+  "Norwegian Bliss":           { line:"Norwegian Cruise Line",cat:"ncl",      color:"#00ff9d", built:2018, capacity:4004, gt:168028, length:333, flag:"🇧🇸 Bahamas",    wiki:"Norwegian Bliss" },
+  "Norwegian Joy":             { line:"Norwegian Cruise Line",cat:"ncl",      color:"#00ff9d", built:2017, capacity:3883, gt:167725, length:333, flag:"🇧🇸 Bahamas",    wiki:"Norwegian Joy" },
+  "Norwegian Escape":          { line:"Norwegian Cruise Line",cat:"ncl",      color:"#00ff9d", built:2015, capacity:4266, gt:164998, length:325, flag:"🇧🇸 Bahamas",    wiki:"Norwegian Escape" },
+  "Norwegian Getaway":         { line:"Norwegian Cruise Line",cat:"ncl",      color:"#00ff9d", built:2014, capacity:3969, gt:145655, length:324, flag:"🇧🇸 Bahamas",    wiki:"Norwegian Getaway" },
+  "Norwegian Breakaway":       { line:"Norwegian Cruise Line",cat:"ncl",      color:"#00ff9d", built:2013, capacity:3969, gt:144017, length:324, flag:"🇧🇸 Bahamas",    wiki:"Norwegian Breakaway" },
+  "Norwegian Epic":            { line:"Norwegian Cruise Line",cat:"ncl",      color:"#00ff9d", built:2010, capacity:4200, gt:155873, length:329, flag:"🇧🇸 Bahamas",    wiki:"Norwegian Epic" },
+  "Norwegian Gem":             { line:"Norwegian Cruise Line",cat:"ncl",      color:"#00ff9d", built:2007, capacity:2394, gt:93530,  length:294, flag:"🇧🇸 Bahamas",    wiki:"Norwegian Gem" },
+  "Norwegian Pearl":           { line:"Norwegian Cruise Line",cat:"ncl",      color:"#00ff9d", built:2006, capacity:2394, gt:93530,  length:294, flag:"🇧🇸 Bahamas",    wiki:"Norwegian Pearl" },
+  "Norwegian Jade":            { line:"Norwegian Cruise Line",cat:"ncl",      color:"#00ff9d", built:2006, capacity:2402, gt:93558,  length:294, flag:"🇧🇸 Bahamas",    wiki:"Norwegian Jade" },
+  "Norwegian Star":            { line:"Norwegian Cruise Line",cat:"ncl",      color:"#00ff9d", built:2001, capacity:2240, gt:91740,  length:294, flag:"🇧🇸 Bahamas",    wiki:"Norwegian Star" },
+  "Norwegian Dawn":            { line:"Norwegian Cruise Line",cat:"ncl",      color:"#00ff9d", built:2002, capacity:2224, gt:92250,  length:294, flag:"🇧🇸 Bahamas",    wiki:"Norwegian Dawn" },
+  "Norwegian Sun":             { line:"Norwegian Cruise Line",cat:"ncl",      color:"#00ff9d", built:2001, capacity:1936, gt:78309,  length:259, flag:"🇧🇸 Bahamas",    wiki:"Norwegian Sun" },
+  "Norwegian Sky":             { line:"Norwegian Cruise Line",cat:"ncl",      color:"#00ff9d", built:1999, capacity:2002, gt:77104,  length:259, flag:"🇧🇸 Bahamas",    wiki:"Norwegian Sky" },
+  "Norwegian Spirit":          { line:"Norwegian Cruise Line",cat:"ncl",      color:"#00ff9d", built:1998, capacity:2018, gt:75338,  length:268, flag:"🇧🇸 Bahamas",    wiki:"Norwegian Spirit" },
+
+  // ============================================================
+  // DISNEY CRUISE LINE — flag: Bahamas
+  // ============================================================
+  "Disney Treasure":           { line:"Disney Cruise Line",   cat:"disney",   color:"#29b6f6", built:2024, capacity:4000, gt:144000, length:341, flag:"🇧🇸 Bahamas",    wiki:"Disney Treasure" },
+  "Disney Wish":               { line:"Disney Cruise Line",   cat:"disney",   color:"#29b6f6", built:2022, capacity:4000, gt:144000, length:341, flag:"🇧🇸 Bahamas",    wiki:"Disney Wish" },
+  "Disney Fantasy":            { line:"Disney Cruise Line",   cat:"disney",   color:"#29b6f6", built:2012, capacity:4000, gt:129690, length:340, flag:"🇧🇸 Bahamas",    wiki:"Disney Fantasy" },
+  "Disney Dream":              { line:"Disney Cruise Line",   cat:"disney",   color:"#29b6f6", built:2011, capacity:4000, gt:129690, length:340, flag:"🇧🇸 Bahamas",    wiki:"Disney Dream" },
+  "Disney Magic":              { line:"Disney Cruise Line",   cat:"disney",   color:"#29b6f6", built:1998, capacity:2713, gt:83338,  length:294, flag:"🇧🇸 Bahamas",    wiki:"Disney Magic" },
+  "Disney Wonder":             { line:"Disney Cruise Line",   cat:"disney",   color:"#29b6f6", built:1999, capacity:2713, gt:83308,  length:294, flag:"🇧🇸 Bahamas",    wiki:"Disney Wonder" },
+
+  // ============================================================
+  // OTHER LINES
+  // ============================================================
+  "Scarlet Lady":              { line:"Virgin Voyages",       cat:"virgin",   color:"#ff1744", built:2021, capacity:2770, gt:110000, length:278, flag:"🇧🇸 Bahamas",    wiki:"Scarlet Lady (ship)" },
+  "Valiant Lady":              { line:"Virgin Voyages",       cat:"virgin",   color:"#ff1744", built:2021, capacity:2770, gt:110000, length:278, flag:"🇧🇸 Bahamas",    wiki:"Valiant Lady" },
+  "Resilient Lady":            { line:"Virgin Voyages",       cat:"virgin",   color:"#ff1744", built:2023, capacity:2770, gt:110000, length:278, flag:"🇧🇸 Bahamas",    wiki:"Resilient Lady" },
+  "Brilliant Lady":            { line:"Virgin Voyages",       cat:"virgin",   color:"#ff1744", built:2024, capacity:2770, gt:110000, length:278, flag:"🇧🇸 Bahamas",    wiki:"Brilliant Lady" },
+  "Queen Mary 2":              { line:"Cunard",               cat:"cunard",   color:"#ef5350", built:2004, capacity:2691, gt:148528, length:345, flag:"🇬🇧 UK",         wiki:"RMS Queen Mary 2" },
+  "Queen Elizabeth":           { line:"Cunard",               cat:"cunard",   color:"#ef5350", built:2010, capacity:2092, gt:90901,  length:294, flag:"🇧🇲 Bermuda",    wiki:"RMS Queen Elizabeth (2010 ship)" },
+  "Queen Victoria":            { line:"Cunard",               cat:"cunard",   color:"#ef5350", built:2007, capacity:1990, gt:90049,  length:294, flag:"🇧🇲 Bermuda",    wiki:"RMS Queen Victoria" },
+  "Queen Anne":                { line:"Cunard",               cat:"cunard",   color:"#ef5350", built:2024, capacity:3000, gt:113000, length:322, flag:"🇧🇲 Bermuda",    wiki:"Queen Anne (ship)" },
+  "Rotterdam":                 { line:"Holland America",      cat:"hal",      color:"#ff8a65", built:2021, capacity:2668, gt:99836,  length:297, flag:"🇳🇱 Netherlands", wiki:"MS Rotterdam (2021 ship)" },
+  "Koningsdam":                { line:"Holland America",      cat:"hal",      color:"#ff8a65", built:2016, capacity:2650, gt:99836,  length:297, flag:"🇳🇱 Netherlands", wiki:"MS Koningsdam" },
+  "Nieuw Statendam":           { line:"Holland America",      cat:"hal",      color:"#ff8a65", built:2018, capacity:2666, gt:99902,  length:297, flag:"🇳🇱 Netherlands", wiki:"MS Nieuw Statendam" },
+  "Nieuw Amsterdam":           { line:"Holland America",      cat:"hal",      color:"#ff8a65", built:2010, capacity:2106, gt:86273,  length:285, flag:"🇳🇱 Netherlands", wiki:"MS Nieuw Amsterdam (2010)" },
+  "Eurodam":                   { line:"Holland America",      cat:"hal",      color:"#ff8a65", built:2008, capacity:2104, gt:86273,  length:285, flag:"🇳🇱 Netherlands", wiki:"MS Eurodam" },
+  "Oosterdam":                 { line:"Holland America",      cat:"hal",      color:"#ff8a65", built:2003, capacity:1848, gt:82305,  length:285, flag:"🇳🇱 Netherlands", wiki:"MS Oosterdam" },
+  "Westerdam":                 { line:"Holland America",      cat:"hal",      color:"#ff8a65", built:2004, capacity:1848, gt:82305,  length:285, flag:"🇳🇱 Netherlands", wiki:"MS Westerdam" },
+  "Zuiderdam":                 { line:"Holland America",      cat:"hal",      color:"#ff8a65", built:2002, capacity:1848, gt:82305,  length:285, flag:"🇳🇱 Netherlands", wiki:"MS Zuiderdam" },
+  "Noordam":                   { line:"Holland America",      cat:"hal",      color:"#ff8a65", built:2006, capacity:1848, gt:82305,  length:285, flag:"🇳🇱 Netherlands", wiki:"MS Noordam" },
+  "Viking Star":               { line:"Viking",               cat:"viking",   color:"#26a69a", built:2015, capacity:930,  gt:47842,  length:228, flag:"🇧🇸 Bahamas",    wiki:"Viking Star" },
+  "Viking Sea":                { line:"Viking",               cat:"viking",   color:"#26a69a", built:2016, capacity:930,  gt:47842,  length:228, flag:"🇧🇸 Bahamas",    wiki:"Viking Sea" },
+  "Viking Sky":                { line:"Viking",               cat:"viking",   color:"#26a69a", built:2017, capacity:930,  gt:47842,  length:228, flag:"🇧🇸 Bahamas",    wiki:"Viking Sky" },
+  "Viking Sun":                { line:"Viking",               cat:"viking",   color:"#26a69a", built:2017, capacity:930,  gt:47842,  length:228, flag:"🇧🇸 Bahamas",    wiki:"Viking Sun" },
+  "Viking Orion":              { line:"Viking",               cat:"viking",   color:"#26a69a", built:2018, capacity:930,  gt:47842,  length:228, flag:"🇧🇸 Bahamas",    wiki:"Viking Orion" },
+  "Viking Jupiter":            { line:"Viking",               cat:"viking",   color:"#26a69a", built:2019, capacity:930,  gt:47842,  length:228, flag:"🇧🇸 Bahamas",    wiki:"Viking Jupiter" },
+  "Viking Venus":              { line:"Viking",               cat:"viking",   color:"#26a69a", built:2021, capacity:930,  gt:47842,  length:228, flag:"🇧🇸 Bahamas",    wiki:"Viking Venus" },
+  "Viking Mars":               { line:"Viking",               cat:"viking",   color:"#26a69a", built:2022, capacity:930,  gt:47842,  length:228, flag:"🇧🇸 Bahamas",    wiki:"Viking Mars" },
+  "Viking Saturn":             { line:"Viking",               cat:"viking",   color:"#26a69a", built:2023, capacity:930,  gt:47842,  length:228, flag:"🇧🇸 Bahamas",    wiki:"Viking Saturn" },
+  "Viking Neptune":            { line:"Viking",               cat:"viking",   color:"#26a69a", built:2022, capacity:930,  gt:47842,  length:228, flag:"🇧🇸 Bahamas",    wiki:"Viking Neptune" },
+  "Costa Smeralda":            { line:"Costa Cruises",        cat:"costa",    color:"#ab47bc", built:2019, capacity:6554, gt:185010, length:337, flag:"🇮🇹 Italy",      wiki:"Costa Smeralda" },
+  "Costa Toscana":             { line:"Costa Cruises",        cat:"costa",    color:"#ab47bc", built:2021, capacity:6554, gt:185010, length:337, flag:"🇮🇹 Italy",      wiki:"Costa Toscana" },
+  "Costa Firenze":             { line:"Costa Cruises",        cat:"costa",    color:"#ab47bc", built:2020, capacity:4232, gt:135225, length:323, flag:"🇮🇹 Italy",      wiki:"Costa Firenze" },
+  "Costa Venezia":             { line:"Costa Cruises",        cat:"costa",    color:"#ab47bc", built:2019, capacity:4232, gt:135225, length:323, flag:"🇮🇹 Italy",      wiki:"Costa Venezia" },
+  "Costa Fascinosa":           { line:"Costa Cruises",        cat:"costa",    color:"#ab47bc", built:2012, capacity:3800, gt:113216, length:290, flag:"🇮🇹 Italy",      wiki:"Costa Fascinosa" },
+  "Costa Favolosa":            { line:"Costa Cruises",        cat:"costa",    color:"#ab47bc", built:2011, capacity:3800, gt:113216, length:290, flag:"🇮🇹 Italy",      wiki:"Costa Favolosa" },
+  "Costa Diadema":             { line:"Costa Cruises",        cat:"costa",    color:"#ab47bc", built:2014, capacity:4947, gt:132500, length:306, flag:"🇮🇹 Italy",      wiki:"Costa Diadema" },
+  "Costa Luminosa":            { line:"Costa Cruises",        cat:"costa",    color:"#ab47bc", built:2009, capacity:2826, gt:92720,  length:294, flag:"🇮🇹 Italy",      wiki:"Costa Luminosa" },
+  "Marina":                    { line:"Oceania Cruises",      cat:"oceania",  color:"#66bb6a", built:2011, capacity:1250, gt:66084,  length:238, flag:"🇲🇭 Marshall Is.", wiki:"MS Marina (Oceania)" },
+  "Riviera":                   { line:"Oceania Cruises",      cat:"oceania",  color:"#66bb6a", built:2012, capacity:1250, gt:66084,  length:238, flag:"🇲🇭 Marshall Is.", wiki:"MS Riviera (ship)" },
+  "Vista":                     { line:"Oceania Cruises",      cat:"oceania",  color:"#66bb6a", built:2023, capacity:1200, gt:67000,  length:238, flag:"🇲🇭 Marshall Is.", wiki:"Allura-class cruise ship" },
+  "Allura":                    { line:"Oceania Cruises",      cat:"oceania",  color:"#66bb6a", built:2025, capacity:1200, gt:67000,  length:238, flag:"🇲🇭 Marshall Is.", wiki:"Allura-class cruise ship" },
+  "Nautica":                   { line:"Oceania Cruises",      cat:"oceania",  color:"#66bb6a", built:2000, capacity:684,  gt:30277,  length:181, flag:"🇲🇭 Marshall Is.", wiki:"MS Nautica" },
+  "Insignia":                  { line:"Oceania Cruises",      cat:"oceania",  color:"#66bb6a", built:1998, capacity:684,  gt:30277,  length:181, flag:"🇲🇭 Marshall Is.", wiki:"MS Insignia" },
+  "Regatta":                   { line:"Oceania Cruises",      cat:"oceania",  color:"#66bb6a", built:1998, capacity:684,  gt:30277,  length:181, flag:"🇲🇭 Marshall Is.", wiki:"MS Regatta" },
+  "Sirena":                    { line:"Oceania Cruises",      cat:"oceania",  color:"#66bb6a", built:1999, capacity:684,  gt:30277,  length:181, flag:"🇲🇭 Marshall Is.", wiki:"MS Sirena" },
+  "Seven Seas Grandeur":       { line:"Regent Seven Seas",    cat:"regent",   color:"#9c8f6e", built:2023, capacity:746,  gt:55000,  length:222, flag:"🇧🇸 Bahamas",    wiki:"Seven Seas Grandeur" },
+  "Seven Seas Splendor":       { line:"Regent Seven Seas",    cat:"regent",   color:"#9c8f6e", built:2020, capacity:746,  gt:55000,  length:222, flag:"🇧🇸 Bahamas",    wiki:"Seven Seas Splendor" },
+  "Seven Seas Explorer":       { line:"Regent Seven Seas",    cat:"regent",   color:"#9c8f6e", built:2016, capacity:750,  gt:55000,  length:224, flag:"🇧🇸 Bahamas",    wiki:"Seven Seas Explorer" },
+  "Seven Seas Voyager":        { line:"Regent Seven Seas",    cat:"regent",   color:"#9c8f6e", built:2003, capacity:700,  gt:42363,  length:206, flag:"🇧🇸 Bahamas",    wiki:"Seven Seas Voyager" },
+  "Seven Seas Mariner":        { line:"Regent Seven Seas",    cat:"regent",   color:"#9c8f6e", built:2001, capacity:700,  gt:48075,  length:216, flag:"🇧🇸 Bahamas",    wiki:"Seven Seas Mariner" },
+  "Silver Nova":               { line:"Silversea",            cat:"silversea",color:"#9c8f6e", built:2023, capacity:728,  gt:40791,  length:244, flag:"🇧🇸 Bahamas",    wiki:"Silver Nova" },
+  "Silver Ray":                { line:"Silversea",            cat:"silversea",color:"#9c8f6e", built:2024, capacity:728,  gt:40791,  length:244, flag:"🇧🇸 Bahamas",    wiki:"Silver Ray" },
+  "Silver Moon":               { line:"Silversea",            cat:"silversea",color:"#9c8f6e", built:2021, capacity:596,  gt:40791,  length:244, flag:"🇧🇸 Bahamas",    wiki:"Silver Moon" },
+  "Silver Muse":               { line:"Silversea",            cat:"silversea",color:"#9c8f6e", built:2017, capacity:596,  gt:40700,  length:212, flag:"🇧🇸 Bahamas",    wiki:"Silver Muse" },
+  "Silver Spirit":             { line:"Silversea",            cat:"silversea",color:"#9c8f6e", built:2009, capacity:540,  gt:36009,  length:212, flag:"🇧🇸 Bahamas",    wiki:"Silver Spirit" },
+  "Silver Shadow":             { line:"Silversea",            cat:"silversea",color:"#9c8f6e", built:2000, capacity:388,  gt:28258,  length:186, flag:"🇧🇸 Bahamas",    wiki:"Silver Shadow" },
+  "Silver Whisper":            { line:"Silversea",            cat:"silversea",color:"#9c8f6e", built:2001, capacity:388,  gt:28258,  length:186, flag:"🇧🇸 Bahamas",    wiki:"Silver Whisper" },
+};
+
+// =====================
+// CARIBBEAN PORTS
+// =====================
+const CARIBBEAN_PORTS = [
+  { name:"Miami",            portName:"PortMiami",                   lat:25.774,  lon:-80.185, major:true  },
+  { name:"Port Canaveral",   portName:"Port Canaveral",              lat:28.415,  lon:-80.600, major:true  },
+  { name:"Tampa",            portName:"Port Tampa Bay",              lat:27.940,  lon:-82.450, major:false },
+  { name:"New Orleans",      portName:"Port of New Orleans",         lat:29.943,  lon:-90.062, major:true  },
+  { name:"Galveston",        portName:"Port of Galveston",           lat:29.301,  lon:-94.797, major:false },
+  { name:"Nassau",           portName:"Nassau Cruise Port",          lat:25.048,  lon:-77.353, major:true  },
+  { name:"Freeport",         portName:"Freeport Harbour",            lat:26.530,  lon:-78.696, major:false },
+  { name:"Ocean Cay",        portName:"Ocean Cay MSC Marine Reserve",lat:25.370,  lon:-79.080, major:false },
+  { name:"CocoCay",          portName:"Perfect Day at CocoCay",      lat:25.828,  lon:-77.953, major:false },
+  { name:"Cozumel",          portName:"Cozumel Cruise Pier",         lat:20.507,  lon:-86.957, major:true  },
+  { name:"Costa Maya",       portName:"Costa Maya Port",             lat:18.726,  lon:-87.708, major:false },
+  { name:"Progreso",         portName:"Port of Progreso",            lat:21.285,  lon:-89.663, major:false },
+  { name:"Roatan",           portName:"Mahogany Bay, Roatan",        lat:16.330,  lon:-86.548, major:false },
+  { name:"Belize City",      portName:"Port of Belize",              lat:17.493,  lon:-88.189, major:false },
+  { name:"Santo Tomas",      portName:"Santo Tomás de Castilla",     lat:15.692,  lon:-88.616, major:false },
+  { name:"Ocho Rios",        portName:"Ocho Rios Cruise Port",       lat:18.407,  lon:-77.102, major:false },
+  { name:"Montego Bay",      portName:"Montego Bay Cruise Port",     lat:18.471,  lon:-77.916, major:false },
+  { name:"Falmouth",         portName:"Falmouth Cruise Port",        lat:18.495,  lon:-77.655, major:false },
+  { name:"Grand Cayman",     portName:"George Town Anchorage",       lat:19.286,  lon:-81.381, major:true  },
+  { name:"San Juan",         portName:"Port of San Juan",            lat:18.465,  lon:-66.117, major:true  },
+  { name:"St. Thomas",       portName:"Crown Bay Marina",            lat:18.341,  lon:-64.940, major:false },
+  { name:"St. Maarten",      portName:"Philipsburg Cruise Terminal", lat:18.024,  lon:-63.047, major:false },
+  { name:"Barbados",         portName:"Bridgetown Cruise Terminal",  lat:13.101,  lon:-59.616, major:false },
+  { name:"Labadee",          portName:"Labadee (Royal Caribbean)",   lat:19.739,  lon:-72.978, major:false },
+  { name:"Amber Cove",       portName:"Amber Cove, DR",              lat:19.843,  lon:-70.709, major:false },
+  { name:"St. Kitts",        portName:"Port Zante, St. Kitts",       lat:17.302,  lon:-62.722, major:false },
+  { name:"Aruba",            portName:"Oranjestad Cruise Terminal",  lat:12.524,  lon:-70.027, major:false },
+  { name:"Curaçao",          portName:"Willemstad Mega Pier",        lat:12.108,  lon:-68.935, major:false },
+  { name:"Long Beach",       portName:"Port of Long Beach",          lat:33.754,  lon:-118.216,major:true  },
+  { name:"San Diego",        portName:"B Street Cruise Terminal",    lat:32.712,  lon:-117.174,major:false },
+  { name:"Ensenada",         portName:"Port of Ensenada",            lat:31.867,  lon:-116.601,major:false },
+];
+
+// =====================
+// STATE
+// =====================
+const SHIPS = [];
+let markers = {}, trailLines = {}, labelLayers = {};
+let currentFilter = 'all';
+let currentSort   = 'name';
+let selectedShipId = null;
+let portLabelLayers = [];
+const liveTrails  = {};
+const lastSpeeds  = {};
+const shipLastSeen = {}; // mmsi → timestamp of last position
+
+// =====================
+// MOBILE SIDEBAR
+// =====================
+function toggleMobileSidebar() {
+  document.getElementById('sidebar').classList.toggle('mobile-open');
+  document.getElementById('sidebarOverlay').classList.toggle('active');
+}
+
+// =====================
+// LEGEND TOGGLE
+// =====================
+function toggleLegend() {
+  document.getElementById('mapLegend').classList.toggle('open');
+}
+
+// Close legend when clicking map
+map.on('click', () => {
+  document.getElementById('mapLegend').classList.remove('open');
+});
+
+// =====================
+// LAST SEEN TIMER
+// =====================
+let lastSeenInterval = null;
+
+function startLastSeenTimer(mmsi) {
+  if (lastSeenInterval) clearInterval(lastSeenInterval);
+  updateLastSeenDisplay(mmsi);
+  lastSeenInterval = setInterval(() => updateLastSeenDisplay(mmsi), 30000);
+}
+
+function updateLastSeenDisplay(mmsi) {
+  const el = document.getElementById('dpLastSeen');
+  if (!el) return;
+  const ts = shipLastSeen[mmsi];
+  if (!ts) { el.textContent = ''; return; }
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1) {
+    el.textContent = 'Last position broadcasted just now.';
+  } else {
+    el.textContent = `Last position broadcasted ${mins} minute${mins !== 1 ? 's' : ''} ago.`;
+  }
+}
+
+function stopLastSeenTimer() {
+  if (lastSeenInterval) { clearInterval(lastSeenInterval); lastSeenInterval = null; }
+}
+
+// Port labels removed in 0.1.1 — kept as no-op to avoid reference errors
+function buildPortLabels(ships) {
+  portLabelLayers.forEach(l => map.removeLayer(l));
+  portLabelLayers = [];
+}
+
+// =====================
+// SORT HELPERS
+// =====================
+function getSorted(ships) {
+  const arr = [...ships];
+  if (currentSort === 'name')  arr.sort((a,b) => a.name.localeCompare(b.name));
+  if (currentSort === 'speed') arr.sort((a,b) => b.speed - a.speed);
+  if (currentSort === 'line')  arr.sort((a,b) => a.line.localeCompare(b.line) || a.name.localeCompare(b.name));
+  return arr;
+}
+
+function setSort(btn, type) {
+  document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentSort = type;
+  buildList(getFiltered());
+}
+
+// =====================
+// FILTER BUTTONS WITH COUNTS
+// =====================
+function updateFilterCounts() {
+  const cats = ['royal','carnival','msc','ncl','celebrity','princess','disney',
+                'virgin','cunard','hal','viking','costa','aida','oceania','regent','silversea','other'];
+  cats.forEach(cat => {
+    const btn = document.getElementById(`fbtn-${cat}`);
+    if (!btn) return;
+    const count = SHIPS.filter(s => s.cat === cat).length;
+    const baseName = btn.textContent.replace(/ \(\d+\)$/, '');
+    btn.textContent = count > 0 ? `${baseName} (${count})` : baseName;
+  });
+}
+
+// =====================
+// MARKERS + TRAILS + LABELS
+// =====================
+function renderShip(ship) {
+  const underway = ship.status === 'underway';
+
+  if (markers[ship.id]) map.removeLayer(markers[ship.id]);
+  if (trailLines[ship.id]) map.removeLayer(trailLines[ship.id]);
+  if (labelLayers[ship.id]) map.removeLayer(labelLayers[ship.id]);
+
+  // Trail from last port departure
+  if (ship.trail && ship.trail.length > 1) {
+    trailLines[ship.id] = L.polyline(ship.trail, {
+      color: ship.color,
+      weight: 2.5,
+      opacity: 0.65,
+      dashArray: '6,5'
+    }).addTo(map);
+  }
+
+  const statusLabel = underway ? '▲ UNDERWAY' : ship.status==='docked' ? '● DOCKED' : '⚓ ANCHORED';
+  const m = L.marker([ship.lat, ship.lon], {
+    icon: makeIcon(ship.color, underway, ship.heading),
+    zIndexOffset: 1000
+  }).addTo(map);
+
+  m.bindPopup(`<div class="ship-popup">
+    <div class="ship-popup-name">${ship.name}</div>
+    <div class="ship-popup-detail">${ship.line}</div>
+    <div class="ship-popup-detail">${ship.speed > 0.5 ? ship.speed + ' knots' : 'Stationary'}</div>
+    <span class="ship-popup-status status-${ship.status}">${statusLabel}</span>
+  </div>`, { maxWidth:220, minWidth:180 });
+
+  m.on('click', () => selectShip(ship));
+  markers[ship.id] = m;
+
+  // Zoom-dependent ship name label
+  updateShipLabel(ship);
+}
+
+function updateShipLabel(ship) {
+  if (labelLayers[ship.id]) map.removeLayer(labelLayers[ship.id]);
+  if (map.getZoom() >= 7) {
+    const lbl = L.marker([ship.lat, ship.lon], {
+      icon: L.divIcon({
+        html: `<div class="ship-label-text">${ship.name}</div>`,
+        className: 'ship-label',
+        iconAnchor: [-10, 6]
+      }),
+      zIndexOffset: 900,
+      interactive: false
+    }).addTo(map);
+    labelLayers[ship.id] = lbl;
+  }
+}
+
+// Re-render labels on zoom
+map.on('zoomend', () => {
+  SHIPS.forEach(ship => updateShipLabel(ship));
+});
+
+function buildMap(ships) {
+  ships.forEach(ship => renderShip(ship));
+}
+
+function buildList(ships) {
+  const sorted = getSorted(ships);
+  document.getElementById('shipCount').textContent = SHIPS.length;
+
+  if (sorted.length === 0) {
+    document.getElementById('shipList').innerHTML = `
+      <div style="padding:24px 16px;text-align:center;color:var(--text3);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.9;">
+        ◌ Waiting for AIS signals...<br>Ships will appear as<br>position reports arrive.
+      </div>`;
+    return;
+  }
+
+  // Split into Underway vs In Port
+  const underway = sorted.filter(s => s.status === 'underway');
+  const inPort   = sorted.filter(s => s.status !== 'underway');
+
+  let html = '';
+
+  if (underway.length > 0) {
+    html += `<div class="section-header"><div class="section-dot" style="background:#00ff9d"></div>Underway (${underway.length})</div>`;
+    html += underway.map(s => shipItemHtml(s)).join('');
+  }
+  if (inPort.length > 0) {
+    html += `<div class="section-header"><div class="section-dot" style="background:#8b949e"></div>In Port (${inPort.length})</div>`;
+    html += inPort.map(s => shipItemHtml(s)).join('');
+  }
+
+  document.getElementById('shipList').innerHTML = html;
+}
+
+function shipItemHtml(s) {
+  const speedTxt = s.speed > 0.5 ? s.speed + 'kn' : 'Stationary';
+  return `<div class="ship-item ${selectedShipId===s.id?'selected':''}" onclick="selectShipById('${s.id}')">
+    <div class="ship-dot" style="background:${s.color}"></div>
+    <div class="ship-item-info">
+      <div class="ship-item-name">${s.name}</div>
+      <div class="ship-item-sub">${s.line}</div>
+    </div>
+    <div class="ship-item-speed">${speedTxt}</div>
+  </div>`;
+}
+
+function selectShipById(id) {
+  const ship = SHIPS.find(s => s.id === id);
+  if (ship) selectShip(ship);
+}
+
+function getFiltered() {
+  return currentFilter === 'all' ? SHIPS : SHIPS.filter(s => s.cat === currentFilter);
+}
+
+function refresh() {
+  const ships = getFiltered();
+  buildList(ships);
+  buildPortLabels(ships);
+}
+
+// =====================
+// SELECT SHIP
+// =====================
+function selectShip(ship) {
+  selectedShipId = ship.id;
+  buildList(getFiltered());
+  map.flyTo([ship.lat, ship.lon], Math.max(map.getZoom(), 6), { duration:1.2 });
+  if (markers[ship.id]) markers[ship.id].openPopup();
+
+  // Close mobile sidebar when ship selected
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebarOverlay').classList.remove('active');
+
+  document.getElementById('dpName').textContent = ship.name;
+  document.getElementById('dpLine').textContent = ship.line;
+  document.getElementById('dpImo').textContent  = ship.imo ? 'IMO ' + ship.imo : '—';
+  document.getElementById('dpFlag').textContent = ship.flag || '—';
+
+  const speedVal = ship.speed > 0.5 ? ship.speed + ' knots' : 'Stationary';
+  document.getElementById('dpSpeed').textContent   = speedVal;
+  document.getElementById('dpHeading').textContent = (ship.heading||0) + '°';
+  document.getElementById('dpLat').textContent     = ship.lat.toFixed(4) + '°';
+  document.getElementById('dpLon').textContent     = ship.lon.toFixed(4) + '°';
+
+  const rowBuilt    = document.getElementById('rowBuilt');
+  const rowCapacity = document.getElementById('rowCapacity');
+  const rowLength   = document.getElementById('rowLength');
+  const rowGT       = document.getElementById('rowGT');
+
+  if (ship.built)    { document.getElementById('dpBuilt').textContent    = ship.built;                     rowBuilt.style.display=''; }
+  else               { rowBuilt.style.display = 'none'; }
+  if (ship.capacity) { document.getElementById('dpCapacity').textContent = ship.capacity.toLocaleString();  rowCapacity.style.display=''; }
+  else               { rowCapacity.style.display = 'none'; }
+  if (ship.length)   { document.getElementById('dpLength').textContent   = ship.length + 'm';              rowLength.style.display=''; }
+  else               { rowLength.style.display = 'none'; }
+  if (ship.gt)       { document.getElementById('dpGT').textContent       = ship.gt.toLocaleString();       rowGT.style.display=''; }
+  else               { rowGT.style.display = 'none'; }
+
+  const badge = document.getElementById('dpBadge');
+  if (ship.status==='underway')      { badge.className='detail-badge badge-underway'; badge.textContent='● UNDERWAY'; }
+  else if (ship.status==='anchored') { badge.className='detail-badge badge-anchored'; badge.textContent='⚓ ANCHORED'; }
+  else                               { badge.className='detail-badge badge-docked';   badge.textContent='🏁 DOCKED'; }
+
+  // Wikipedia link
+  const wikiLink = document.getElementById('dpWikiLink');
+  if (ship.wiki) {
+    wikiLink.href = `https://en.wikipedia.org/wiki/${encodeURIComponent(ship.wiki)}`;
+    wikiLink.style.display = 'block';
+  } else {
+    wikiLink.style.display = 'none';
+  }
+
+  // Last seen timer
+  startLastSeenTimer(ship.mmsi);
+
+  document.getElementById('detailPanel').classList.add('open');
+  loadShipPhoto(ship);
+}
+
+function closeDetail() {
+  document.getElementById('detailPanel').classList.remove('open');
+  selectedShipId = null;
+  stopLastSeenTimer();
+  buildList(getFiltered());
+}
+
+function toggleFilters() {
+  document.getElementById('filterRow').classList.toggle('open');
+  document.getElementById('filterArrow').classList.toggle('open');
+}
+
+function setFilter(btn, cat) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentFilter = cat;
+  refresh();
+}
+
+function filterSearch(val) {
+  const q = val.toLowerCase();
+  const ships = q
+    ? SHIPS.filter(s => s.name.toLowerCase().includes(q) || s.line.toLowerCase().includes(q))
+    : getFiltered();
+  buildList(ships);
+}
+
+// =====================
+// PHOTO LOOKUP
+// =====================
+const photoCache = {};
+
+async function fetchShipPhoto(ship) {
+  const cacheKey = ship.mmsi || ship.wiki || ship.name;
+  if (photoCache[cacheKey] !== undefined) return photoCache[cacheKey];
+
+  const wikiTitle = ship.wiki || ship.name;
+  const searchTerms = [wikiTitle, ship.name, `MV ${ship.name}`, `MS ${ship.name}`, `SS ${ship.name}`, `RMS ${ship.name}`];
+  const seen = new Set();
+  const unique = searchTerms.filter(t => { if(seen.has(t)) return false; seen.add(t); return true; });
+
+  try {
+    // Strategy 1: direct Wikipedia page lookup
+    for (const term of unique) {
+      const enc = encodeURIComponent(term);
+      const res  = await fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${enc}&prop=pageimages&format=json&pithumbsize=700&origin=*`);
+      const data = await res.json();
+      const page = Object.values(data.query.pages)[0];
+      if (page && !page.missing && page.thumbnail?.source) {
+        photoCache[cacheKey] = { url: page.thumbnail.source, title: page.title };
+        return photoCache[cacheKey];
+      }
+    }
+
+    // Strategy 2: Wikipedia opensearch (redirects & alternate titles)
+    const searchRes = await fetch(`https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(ship.name)}&limit=5&format=json&origin=*`);
+    const [, titles] = await searchRes.json();
+    for (const title of (titles||[])) {
+      if (!title.toLowerCase().includes('ship') && !title.toLowerCase().includes(ship.name.toLowerCase().split(' ')[0])) continue;
+      const enc  = encodeURIComponent(title);
+      const res  = await fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${enc}&prop=pageimages&format=json&pithumbsize=700&origin=*`);
+      const data = await res.json();
+      const page = Object.values(data.query.pages)[0];
+      if (page && !page.missing && page.thumbnail?.source) {
+        photoCache[cacheKey] = { url: page.thumbnail.source, title: page.title };
+        return photoCache[cacheKey];
+      }
+    }
+
+    // Strategy 3: Wikimedia Commons search as final fallback
+    const commonsRes = await fetch(`https://commons.wikimedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(ship.name + ' cruise ship')}&srnamespace=6&srlimit=3&format=json&origin=*`);
+    const commonsData = await commonsRes.json();
+    const hits = commonsData?.query?.search || [];
+    for (const hit of hits) {
+      const title = hit.title;
+      const enc   = encodeURIComponent(title);
+      const res   = await fetch(`https://commons.wikimedia.org/w/api.php?action=query&titles=${enc}&prop=imageinfo&iiprop=url|thumburl&iiurlwidth=700&format=json&origin=*`);
+      const data  = await res.json();
+      const page  = Object.values(data.query.pages)[0];
+      const thumb = page?.imageinfo?.[0]?.thumburl;
+      if (thumb) {
+        photoCache[cacheKey] = { url: thumb, title: `${ship.name} (Commons)` };
+        return photoCache[cacheKey];
+      }
+    }
+  } catch(e) {}
+
+  photoCache[cacheKey] = null;
+  return null;
+}
+
+async function loadShipPhoto(ship) {
+  const area   = document.getElementById('photoArea');
+  const credit = document.getElementById('photoCredit');
+  area.innerHTML = '<div class="photo-loading"><div class="photo-spinner"></div></div>';
+  credit.style.display = 'none';
+  const photo = await fetchShipPhoto(ship);
+  if (photo) {
+    area.innerHTML = `<img class="detail-photo" src="${photo.url}" alt="${ship.name}" onerror="this.parentNode.innerHTML='<div class=\\'detail-photo-placeholder\\'>🚢</div>'">`;
+    credit.style.display = 'block';
+    credit.textContent = `📷 Photo via Wikipedia · ${photo.title}`;
+  } else {
+    area.innerHTML = '<div class="detail-photo-placeholder">🚢</div>';
+    credit.style.display = 'none';
+  }
+}
+
+
+// =====================
+// AIS CONNECTION
+// =====================
+const AIS_API_KEY = '9fb0ea568997a8bf8632a3bac61a4cbdfd2bf60a';
+const AIS_LIVE    = true;
+
+function nearPort(lat, lon) {
+  return CARIBBEAN_PORTS.find(p => {
+    const dlat = p.lat - lat, dlon = p.lon - lon;
+    return Math.sqrt(dlat*dlat + dlon*dlon) < 0.015;
+  });
+}
+
+function toTitleCase(str) {
+  // Clean up null chars, @ symbols and extra whitespace common in AIS names
+  str = str.replace(/[\x00@]/g, '').replace(/\s+/g, ' ').trim();
+  // Words that should stay lowercase unless they're the first word
+  const lower = new Set(['of','the','and','for','in','on','at','to','a','an','by','or']);
+  const keep  = new Set(['MSC','NCL','RCI','HAL','MV','MS','SS','RMS','HMS']);
+  return str.toLowerCase().split(' ').map((word, i) => {
+    const up = word.toUpperCase();
+    if (keep.has(up)) return up;
+    // Preserve AIDA prefix
+    if (up.startsWith('AIDA')) return 'AIDA' + word.slice(4).charAt(0).toUpperCase() + word.slice(5).toLowerCase();
+    // Keep small words lowercase unless first word
+    if (i > 0 && lower.has(word)) return word;
+    return word.charAt(0).toUpperCase() + word.slice(1);
+  }).join(' ');
+}
+
+// Fuzzy DB lookup — tries exact match first, then cleans up common AIS variations
+function lookupShipDB(name) {
+  if (SHIP_DB[name]) return SHIP_DB[name];
+  // Try without trailing spaces or dots
+  const cleaned = name.replace(/[.\s]+$/, '').trim();
+  if (SHIP_DB[cleaned]) return SHIP_DB[cleaned];
+  // Try with normalized internal spaces
+  const normalized = name.replace(/\s+/g, ' ');
+  if (SHIP_DB[normalized]) return SHIP_DB[normalized];
+  // Try all DB keys for a case-insensitive match
+  const lower = name.toLowerCase();
+  const key = Object.keys(SHIP_DB).find(k => k.toLowerCase() === lower);
+  if (key) return SHIP_DB[key];
+  return null;
+}
+
+function connectAIS() {
+  const proxyUrl = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'ws://localhost:3001'
+    : 'wss://cruiseradar-proxy-production.up.railway.app';
+  const ws = new WebSocket(proxyUrl);
+
+  ws.onopen  = () => { console.log('[AIS] Connected to proxy'); setAISStatus('connected'); };
+  ws.onerror = () => setAISStatus('error');
+  ws.onclose = () => { setAISStatus('reconnecting'); setTimeout(connectAIS, 5000); };
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'status') { setAISStatus(msg.status === 'connected' ? 'connected' : 'reconnecting'); return; }
+      if (msg.type !== 'position') return;
+
+      const { mmsi, position: pos, static: stat, trail: serverTrail, lastSeen: serverLastSeen } = msg;
+      if (!pos || !stat) return;
+
+      const lat        = pos.Latitude;
+      const lon        = pos.Longitude;
+      const heading    = pos.TrueHeading !== 511 ? pos.TrueHeading : (pos.Cog || 0);
+      const speedKnots = parseFloat((pos.Sog || 0).toFixed(1));
+      const underway   = speedKnots > 0.5;
+
+      const rawName = (stat.Name || '').trim();
+      if (!rawName || rawName === mmsi) return;
+
+      const name      = toTitleCase(rawName);
+      const nameLower = name.toLowerCase();
+      const dbEntry   = lookupShipDB(name);
+
+      // Filter non-DB ships by keyword + size
+      if (!dbEntry) {
+        const CRUISE_KEYWORDS = [
+          'carnival','norwegian','celebrity','disney','scarlet lady','valiant lady',
+          'resilient lady','brilliant lady','msc ','costa ','aida',
+          'queen mary','queen elizabeth','queen victoria','queen anne',
+          'koningsdam','nieuw statendam','nieuw amsterdam','rotterdam','eurodam',
+          'oosterdam','westerdam','zuiderdam','noordam',
+          'viking star','viking sea','viking sky','viking sun','viking orion',
+          'viking jupiter','viking venus','viking mars','viking saturn','viking neptune',
+          'seven seas','silver muse','silver spirit','silver moon','silver nova',
+          'silver ray','silver shadow','silver whisper',
+          'oasis','wonder of','symphony of','harmony of','allure of','odyssey of',
+          'icon of','utopia of','navigator of','explorer of','anthem of','quantum of',
+          'ovation of','spectrum of','mariner of','jewel of','freedom of',
+          'independence of','brilliance of','serenade of','enchantment of',
+          'radiance of','vision of','grandeur of',
+          'enchanted princess','discovery princess','sun princess','sky princess',
+          'majestic princess','regal princess','royal princess','caribbean princess',
+          'crown princess','emerald princess','ruby princess','sapphire princess',
+          'diamond princess','star princess','golden princess','grand princess',
+          'celebrity edge','celebrity apex','celebrity beyond','celebrity ascent',
+          'celebrity reflection','celebrity silhouette','celebrity equinox',
+          'celebrity solstice','celebrity eclipse','celebrity infinity',
+          'celebrity summit','celebrity constellation','celebrity millennium',
+          'disney wish','disney dream','disney fantasy','disney magic','disney wonder','disney treasure',
+          'marina','riviera','nautica','insignia','regatta','sirena',
+        ];
+        const isCruise = CRUISE_KEYWORDS.some(kw => nameLower.includes(kw));
+        if (!isCruise) {
+          console.debug(`[Filter] Rejected (not cruise): "${name}" MMSI:${mmsi}`);
+          return;
+        }
+        const dim     = stat.Dimension;
+        const shipLen = dim ? (dim.A||0)+(dim.B||0) : 0;
+        if (shipLen > 0 && shipLen < 100) {
+          console.debug(`[Filter] Rejected (too small ${shipLen}m): "${name}" MMSI:${mmsi}`);
+          return;
+        }
+      }
+
+      // Resolve line / color / cat
+      let line, color, cat;
+      if (dbEntry) {
+        line = dbEntry.line; color = dbEntry.color; cat = dbEntry.cat;
+      } else {
+        line = 'Unknown'; color = '#8b949e'; cat = 'other';
+        // Royal Caribbean — use specific phrases only to avoid false positives
+        // (e.g. 'adventure' alone would match Disney Adventure)
+        if (nameLower.includes('of the seas') || nameLower.includes('of the sea') ||
+            nameLower.includes('of seas') ||
+            ['oasis of','allure of','harmony of','symphony of','wonder of',
+             'icon of','utopia of','anthem of','quantum of','ovation of',
+             'spectrum of','odyssey of','navigator of','mariner of',
+             'explorer of','adventure of','voyager of','freedom of',
+             'liberty of','independence of','brilliance of','serenade of',
+             'jewel of','enchantment of','grandeur of','vision of',
+             'radiance of','star of the'].some(k => nameLower.includes(k)))
+                                               { line='Royal Caribbean';      color='#7c6af5'; cat='royal';     }
+        else if (nameLower.includes('carnival'))        { line='Carnival Cruise Line'; color='#ff6b35'; cat='carnival';  }
+        else if (nameLower.startsWith('msc ') || nameLower === 'msc')
+                                               { line='MSC Cruises';          color='#00d4ff'; cat='msc';       }
+        else if (nameLower.includes('norwegian'))       { line='Norwegian Cruise Line';color='#00ff9d'; cat='ncl';       }
+        else if (nameLower.includes('celebrity'))       { line='Celebrity Cruises';    color='#ffd700'; cat='celebrity'; }
+        else if (nameLower.includes('disney'))          { line='Disney Cruise Line';   color='#29b6f6'; cat='disney';    }
+        else if (['scarlet lady','valiant lady','resilient lady','brilliant lady'].some(k => nameLower.includes(k)))
+                                               { line='Virgin Voyages';       color='#ff1744'; cat='virgin';    }
+        else if (nameLower.includes('princess'))        { line='Princess Cruises';     color='#4fc3f7'; cat='princess';  }
+        else if (nameLower.includes('queen mary') || nameLower.includes('queen elizabeth') ||
+                 nameLower.includes('queen victoria') || nameLower.includes('queen anne'))
+                                               { line='Cunard';               color='#ef5350'; cat='cunard';    }
+        else if (nameLower.includes('koningsdam') || nameLower.includes('nieuw') ||
+                 nameLower.includes('eurodam') || nameLower.includes('oosterdam') ||
+                 nameLower.includes('westerdam') || nameLower.includes('zuiderdam') ||
+                 nameLower.includes('noordam') || nameLower.includes('volendam') ||
+                 nameLower.includes('zaandam') || (nameLower.includes('rotterdam') && !nameLower.includes('msc')))
+                                               { line='Holland America';      color='#ff8a65'; cat='hal';       }
+        else if (nameLower.includes('viking'))          { line='Viking';               color='#26a69a'; cat='viking';   }
+        else if (nameLower.includes('costa'))           { line='Costa Cruises';        color='#ab47bc'; cat='costa';    }
+        else if (nameLower.startsWith('aida') || nameLower.includes('aida'))
+                                               { line='AIDA Cruises';         color='#ec407a'; cat='aida';     }
+        else if (nameLower.includes('seven seas'))      { line='Regent Seven Seas';    color='#9c8f6e'; cat='regent';   }
+        else if (nameLower.includes('silver'))          { line='Silversea';            color='#9c8f6e'; cat='silversea';}
+        else if (['marina','riviera','nautica','insignia','regatta','sirena','vista','allura'].some(n => nameLower.includes(n)))
+                                               { line='Oceania Cruises';      color='#66bb6a'; cat='oceania';  }
+      }
+
+      // Trail logic — seed from server history on first message, then append live points
+      const isFirstSeen = liveTrails[mmsi] === undefined;
+      const wasStationary = (lastSpeeds[mmsi] || 0) < 0.5;
+
+      if (isFirstSeen) {
+        // First time we see this ship — seed from server trail regardless of current speed
+        liveTrails[mmsi] = (serverTrail && serverTrail.length > 0)
+          ? serverTrail.map(p => [p.lat, p.lon])
+          : [];
+      }
+
+      if (underway && wasStationary && !isFirstSeen) {
+        // Departed from port after we were watching — reset trail from this point
+        liveTrails[mmsi] = [[lat, lon]];
+      } else if (underway) {
+        liveTrails[mmsi].push([lat, lon]);
+        if (liveTrails[mmsi].length > 2000) liveTrails[mmsi].shift();
+      }
+      lastSpeeds[mmsi] = speedKnots;
+
+      // Update lastSeen
+      shipLastSeen[mmsi] = serverLastSeen || Date.now();
+
+      const nearestPort = nearPort(lat, lon);
+
+      let ship = SHIPS.find(s => s.mmsi === mmsi);
+      if (!ship) {
+        const dim      = stat.Dimension;
+        const aisLen   = dim ? (dim.A||0)+(dim.B||0) : 0;
+        ship = {
+          id: mmsi, mmsi, name,
+          line, color, cat,
+          flag:     dbEntry ? dbEntry.flag     : (stat.Flag || '—'),
+          built:    dbEntry ? dbEntry.built     : null,
+          capacity: dbEntry ? dbEntry.capacity  : null,
+          length:   dbEntry ? dbEntry.length    : (aisLen || null),
+          gt:       dbEntry ? dbEntry.gt        : null,
+          imo:      dbEntry ? dbEntry.imo       : (stat.ImoNumber || '—'),
+          wiki:     dbEntry ? dbEntry.wiki      : name,
+          from: nearestPort ? nearestPort.name : '—',
+          to: '—',
+          lat, lon,
+          heading: heading || 0,
+          speed: speedKnots,
+          status: underway ? 'underway' : 'docked',
+          trail: liveTrails[mmsi] || [],
+        };
+        SHIPS.push(ship);
+        updateFilterCounts();
+      } else {
+        ship.lat     = lat;
+        ship.lon     = lon;
+        ship.heading = heading || 0;
+        ship.speed   = speedKnots;
+        ship.status  = underway ? 'underway' : 'docked';
+        ship.trail   = liveTrails[mmsi] || [];
+        if (nearestPort) ship.from = nearestPort.name;
+      }
+
+      renderShip(ship);
+      buildList(getFiltered());
+      buildPortLabels(getFiltered());
+
+      // Update detail panel if this ship is selected
+      if (selectedShipId === ship.id) {
+        const speedVal = ship.speed > 0.5 ? ship.speed + ' knots' : 'Stationary';
+        document.getElementById('dpSpeed').textContent   = speedVal;
+        document.getElementById('dpHeading').textContent = (ship.heading||0) + '°';
+        document.getElementById('dpLat').textContent     = ship.lat.toFixed(4) + '°';
+        document.getElementById('dpLon').textContent     = ship.lon.toFixed(4) + '°';
+        const badge = document.getElementById('dpBadge');
+        if (underway) { badge.className='detail-badge badge-underway'; badge.textContent='● UNDERWAY'; }
+        else          { badge.className='detail-badge badge-docked';   badge.textContent='🏁 DOCKED'; }
+        updateLastSeenDisplay(mmsi);
+      }
+
+    } catch(e) { console.warn('[AIS] Parse error', e); }
+  };
+}
+
+function setAISStatus(state) {
+  const badge = document.getElementById('liveBadge');
+  if (!badge) return;
+  if (state === 'connected')    { badge.style.cssText='display:flex;align-items:center;gap:5px;background:rgba(0,255,157,0.1);border:1px solid rgba(0,255,157,0.3);border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700;color:#00ff9d;letter-spacing:1px;'; badge.innerHTML='<div class="live-dot"></div>AIS LIVE'; }
+  if (state === 'error')        { badge.style.cssText='display:flex;align-items:center;gap:5px;background:rgba(255,80,80,0.1);border:1px solid rgba(255,80,80,0.3);border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700;color:#ff5050;letter-spacing:1px;'; badge.textContent='● AIS ERROR'; }
+  if (state === 'reconnecting') { badge.style.cssText='display:flex;align-items:center;gap:5px;background:rgba(255,165,0,0.1);border:1px solid rgba(255,165,0,0.3);border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700;color:orange;letter-spacing:1px;'; badge.textContent='◌ RECONNECTING'; }
+}
+
+// =====================
+// INIT
+// =====================
+refresh();
+connectAIS();
+
+// Escape key closes detail panel
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeDetail();
+});
+
+</script>
+</body>
+</html>
